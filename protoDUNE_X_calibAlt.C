@@ -71,7 +71,6 @@ TH3F *zneg=(TH3F*)ef->Get("Reco_ElecField_Z_Neg");
 TH3F *xpos=(TH3F*)ef->Get("Reco_ElecField_X_Pos");
 TH3F *ypos=(TH3F*)ef->Get("Reco_ElecField_Y_Pos");
 TH3F *zpos=(TH3F*)ef->Get("Reco_ElecField_Z_Pos");
-
 TFile *efACA=new TFile("/dune/app/users/apaudel/MC_sample_jan26/data_newfiles/Efield_correctedz.root");
 TH1D *eXACA=(TH1D*)efACA->Get("med_Ef");
 float tot_Ef(float xval,float yval,float zval){
@@ -81,16 +80,18 @@ float tot_Ef(float xval,float yval,float zval){
   }
   else{
     if(xval>=0){
-      float ex=eXACA->Interpolate(xval);
+            float ex=eXACA->Interpolate(xval);
       float ey=0.0+E0value*ypos->GetBinContent(ypos->FindBin(xval,yval,zval));
       float ez=0.0+E0value*zpos->GetBinContent(zpos->FindBin(xval,yval,zval));
       return sqrt(ex*ex+ey*ey+ez*ez);
+      // return ex;
     }
     else{
-      float ex=eXACA->Interpolate(xval);
+         float ex=eXACA->Interpolate(xval);
       float ey=0.0+E0value*yneg->GetBinContent(yneg->FindBin(xval,yval,zval));
       float ez=0.0+E0value*zneg->GetBinContent(zneg->FindBin(xval,yval,zval));
       return sqrt(ex*ex+ey*ey+ez*ez);
+      // return ex;
     }
   }
 }
@@ -185,18 +186,37 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
   dqdx_frac_correction_0.resize(numBins);
   std::map<int, std::vector<TH1D*>> dqdx_hist;
   std::map<int, TH1D*> all_dqdx_hist;
+  std::map<int, std::map<int, std::vector<TH1D*>>> dqdx_hist_fiducialize;
+  std::vector<TH1D*> dqdx_mpv_X_hist_1_vec, dqdx_mpv_X_hist_0_vec, dqdx_mpv_X_hist_2_vec;
+  for (size_t i=0; i<3; ++i){
+  for (size_t j=0; j<3; ++j){
+  dqdx_mpv_X_hist_0_vec.push_back(new TH1D(Form("dqdx_mpv_X_hist_0_%zu_%zu", i, j), Form("Plane0:%zu:%zu", i, j),numBins,-360,360)); 
+  dqdx_mpv_X_hist_1_vec.push_back(new TH1D(Form("dqdx_mpv_X_hist_1_%zu_%zu", i, j), Form("Plane1:%zu:%zu", i, j),numBins,-360,360));    
+  dqdx_mpv_X_hist_2_vec.push_back(new TH1D(Form("dqdx_mpv_X_hist_2_%zu_%zu", i, j), Form("Plane2:%zu:%zu", i, j),numBins,-360,360));    
 
+
+  }
+  }
   for (size_t i = 0; i < 3; ++i) {
     dqdx_hist[i] = std::vector<TH1D*>();
     all_dqdx_hist[i]=(new TH1D(Form("dall_qdx_%zu", i),
                                         Form("all_Plane:%zu", i),
                                         100, 0.0, 200));
+
   for (size_t j = 0; j < nBins; ++j) {
           dqdx_hist[i].push_back(new TH1D(Form("dqdx_%zu_%zu", i, j), 
                                         Form("Plane:%zu bin:%zu", i, j),
-                                        100, 0.0, 200));      
-    }
-  }
+                                        100, 0.0, 200)); }     
+    for (size_t k=0; k<9; ++k){ dqdx_hist_fiducialize[i][k]=std::vector<TH1D*>();
+       for (size_t j = 0; j < nBins; ++j) {
+          dqdx_hist_fiducialize[i][k].push_back(new TH1D(Form("dqdx_%zu_%zu_%zu", i,k, j),
+                                        Form("Plane:%zu bin:%zu:%zu", i, k,j),
+                                        100, 0.0, 200));
+
+
+
+       }
+  }}
   ////////////////////// Importing Y-Z plane fractional corrections /////////////
   fChain->GetEntry(0);
   if (run>10000) run = 0;
@@ -212,7 +232,7 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
   ////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
   std::string fileName=Form("Xcalo_mich%s_r%d_alt.root",mn.Data(), run);
-  if (measureLifetime==true) fileName=Form("Xcalo_mich%s_r%d_%s_%s_alt.root",mn.Data(), run, location.c_str(),tpcUsed.c_str()); 
+  if (measureLifetime==true) fileName=Form("Xcalo_mich%s_r%d_alt.root",mn.Data(), run); 
   TFile *file = new TFile(Form("%s",fileName.c_str()),"recreate");
   TTree t1("t1","a simple Tree with simple variables");//creating a tree example
   Int_t run_number;
@@ -241,7 +261,7 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
   }
   Long64_t nbytes = 0, nb = 0;
    for (Long64_t jentry=0; jentry<nentries;jentry++) {
-  // for (Long64_t jentry=0; jentry<10000;jentry++) {
+  // for (Long64_t jentry=0; jentry<10000;jentry++)
     Long64_t ientry = LoadTree(jentry);
     if (ientry < 0) break;
     nb = fChain->GetEntry(jentry);   nbytes += nb;
@@ -254,6 +274,7 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
     }
     int rest_counter=0;
     int x_bin;
+    int yLoc; int zLoc;
     for(int i=0; i<cross_trks; ++i){
       bool testneg=0;
       bool testpos=0;
@@ -262,14 +283,25 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
       if(trkstartx[i]>350 or trkendx[i]>350) testpos=1;      
       //plane 2
       if(!((TMath::Abs(trkstartx[i])>350||trkstarty[i]<50||trkstarty[i]>550||trkstartz[i]<50||trkstartz[i]>645)&&(TMath::Abs(trkendx[i])>350||trkendy[i]<50||trkendy[i]>550||trkendz[i]<50||trkendz[i]>645))) continue;
-      //  if(!(((TMath::Abs(trackthetaxz[i])>1.13) && (TMath::Abs(trackthetaxz[i])<2.0))||(TMath::Abs(trackthetayz[i])>1.22 && TMath::Abs(trackthetayz[i])<1.92))){
+      //  if(!(((TMath::Abs(trackthetaxz[i])>1.13) && (TMath::Abs(trackthetaxz[i])<2.0))||(TMath::Abs(trackthetayz[i])>1.22 && TMath::Abs(trackthetayz[i])<1.92)))
       if(!((abs(180/TMath::Pi()*trackthetaxz[i])>60 && abs(180/TMath::Pi()*trackthetaxz[i])<120)||(abs(180/TMath::Pi()*trackthetayz[i])>80 && abs(180/TMath::Pi()*trackthetayz[i])<100))){
-	for(int j=1; j<TMath::Min(ntrkhits[i][2]-1,3000); ++j){
+      for(int j=1; j<TMath::Min(ntrkhits[i][2]-1,3000); ++j){
 	  if((trkhity[i][2][j]<600)&&(trkhity[i][2][j]>0)){
 	    if((trkhitz[i][2][j]<695)&&(trkhitz[i][2][j]>0)){
-            if((trkhity[i][0][j]<highY)&&(trkhity[i][0][j]>lowY) && fiducialize){
-            if((trkhitz[i][0][j]<highZ)&&(trkhitz[i][0][j]>lowZ) && fiducialize){
-	      if(trkhitx[i][2][j]<0 && trkhitx[i][2][j]>-360 && testneg){//negative drift
+	        yLoc=-1; zLoc=-1;
+                if (trkhity[i][2][j]>25 && trkhity[i][2][j]<175) yLoc=0;
+                if (trkhity[i][2][j]>225 && trkhity[i][2][j]<375) yLoc=1;
+                if (trkhity[i][2][j]>425 && trkhity[i][2][j]<575) yLoc=2;
+
+                if (trkhitz[i][2][j]>50 && trkhitz[i][2][j]<220) zLoc=0;
+                if (trkhitz[i][2][j]>240 && trkhitz[i][2][j]<450) zLoc=1;
+                if (trkhitz[i][2][j]>470 && trkhitz[i][2][j]<645) zLoc=2;
+
+
+
+
+
+               if(trkhitx[i][2][j]<0 && trkhitx[i][2][j]>-360 && testneg){//negative drift
 		if(trkhitx[i][2][j]<0 && trkhitx[i][2][j+1]>0) continue;
 		if(trkhitx[i][2][j]<0 && trkhitx[i][2][j-1]>0) continue;
 		x_bin=dqdx_X_hist_2->FindBin(trkhitx[i][2][j]);
@@ -292,11 +324,16 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
                 hdqdx[2]->Fill(trkdqdx[i][2][j]);
                 hdedx[2]->Fill(trkdedx[i][2][j]);
                 dqdx_hist[2][x_bin-1]->Fill(corrected_dqdx_2);
-	      }//X containment
+                if (yLoc==0 && zLoc>-1) dqdx_hist_fiducialize[2][zLoc][x_bin-1]->Fill(corrected_dqdx_2);
+                else if (yLoc==1 && zLoc>-1) dqdx_hist_fiducialize[2][zLoc+3][x_bin-1]->Fill(corrected_dqdx_2);
+                else if (yLoc==2 && zLoc>-1) dqdx_hist_fiducialize[2][zLoc+6][x_bin-1]->Fill(corrected_dqdx_2);
+
+              }//X containment
 	      if(trkhitx[i][2][j]>0 && trkhitx[i][2][j]<360 && testpos){//positive drift
 		if(trkhitx[i][2][j]>0 && trkhitx[i][2][j+1]<0) continue;
 		if(trkhitx[i][2][j]>0 && trkhitx[i][2][j-1]<0) continue;
 		x_bin=dqdx_X_hist_2->FindBin(trkhitx[i][2][j]);
+                  
 		float YZ_correction_factor_positiveX_2=YZ_positiveX_hist_2->GetBinContent(YZ_positiveX_hist_2->FindBin(trkhitz[i][2][j],trkhity[i][2][j]));
 		float recom_correction=recom_factor(tot_Ef(trkhitx[i][2][j],trkhity[i][2][j],trkhitz[i][2][j]));
 		float corrected_dqdx_2=trkdqdx[i][2][j]*YZ_correction_factor_positiveX_2*recom_correction;
@@ -317,8 +354,11 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
                 hdqdx[2]->Fill(trkdqdx[i][2][j]);
                 hdedx[2]->Fill(trkdedx[i][2][j]);
                 dqdx_hist[2][x_bin-1]->Fill(corrected_dqdx_2);
-	      }//X containment
-          }} // MidMod Cuts
+                if (yLoc==0 && zLoc>-1) dqdx_hist_fiducialize[2][zLoc][x_bin-1]->Fill(corrected_dqdx_2);
+                else if (yLoc==1 && zLoc>-1) dqdx_hist_fiducialize[2][zLoc+3][x_bin-1]->Fill(corrected_dqdx_2);
+	        else if (yLoc==2 && zLoc>-1) dqdx_hist_fiducialize[2][zLoc+6][x_bin-1]->Fill(corrected_dqdx_2);
+
+              }//X containment
 	    } // Z containment
 	  } // Y containment
 	} // loop over hits of the track in the given plane
@@ -331,9 +371,23 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
       for(int j=1; j<TMath::Min(ntrkhits[i][1]-1,3000); ++j){
 	if((trkhity[i][1][j]<600)&&(trkhity[i][1][j]>0)){
 	  if((trkhitz[i][1][j]<695)&&(trkhitz[i][1][j]>0)){
-            if((trkhity[i][1][j]<highY)&&(trkhity[i][1][j]>lowY) && fiducialize){
-            if((trkhitz[i][1][j]<highZ)&&(trkhitz[i][1][j]>lowZ) && fiducialize){
-	    if(trkhitx[i][1][j]<0 && trkhitx[i][1][j]>-360 && testneg){
+	  
+                yLoc=-1; zLoc=-1;
+                if (trkhity[i][1][j]>25 && trkhity[i][1][j]<175) yLoc=0;
+                if (trkhity[i][1][j]>225 && trkhity[i][1][j]<375) yLoc=1;
+                if (trkhity[i][1][j]>425 && trkhity[i][1][j]<575) yLoc=2;
+
+                if (trkhitz[i][1][j]>50 && trkhitz[i][1][j]<220) zLoc=0;
+                if (trkhitz[i][1][j]>240 && trkhitz[i][1][j]<450) zLoc=1;
+                if (trkhitz[i][1][j]>470 && trkhitz[i][1][j]<645) zLoc=2;
+
+
+
+
+
+
+
+            if(trkhitx[i][1][j]<0 && trkhitx[i][1][j]>-360 && testneg){
 	      if(abs(180/TMath::Pi()*trackthetaxz[i])>140){
 	    	if(trkhitx[i][1][j]<0 && trkhitx[i][1][j+1]>0) continue;
 		if(trkhitx[i][1][j]<0 && trkhitx[i][1][j-1]>0) continue;
@@ -347,7 +401,16 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
                 hdqdx[1]->Fill(trkdqdx[i][1][j]);
                 hdedx[1]->Fill(trkdedx[i][1][j]);
                 dqdx_hist[1][x_bin-1]->Fill(corrected_dqdx_1);
-	      }
+                if (yLoc==0 && zLoc>-1) dqdx_hist_fiducialize[1][zLoc][x_bin-1]->Fill(corrected_dqdx_1);
+                else if (yLoc==1 && zLoc>-1) dqdx_hist_fiducialize[1][zLoc+3][x_bin-1]->Fill(corrected_dqdx_1);
+                else if (yLoc==2 && zLoc>-1) dqdx_hist_fiducialize[1][zLoc+6][x_bin-1]->Fill(corrected_dqdx_1);
+
+
+
+
+
+
+              }
 	    }
 	    if(trkhitx[i][1][j]>0 && trkhitx[i][1][j]<360 && testpos){
 	      if(trkhitx[i][1][j]>0 && trkhitx[i][1][j+1]<0) continue;
@@ -363,9 +426,16 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
                 hdqdx[1]->Fill(trkdqdx[i][1][j]);
                 hdedx[1]->Fill(trkdedx[i][1][j]);
                 dqdx_hist[1][x_bin-1]->Fill(corrected_dqdx_1);
-	      }
+                if (yLoc==0 && zLoc>-1) dqdx_hist_fiducialize[1][zLoc][x_bin-1]->Fill(corrected_dqdx_1);
+                else if (yLoc==1 && zLoc>-1) dqdx_hist_fiducialize[1][zLoc+3][x_bin-1]->Fill(corrected_dqdx_1);
+                else if (yLoc==2 && zLoc>-1) dqdx_hist_fiducialize[1][zLoc+6][x_bin-1]->Fill(corrected_dqdx_1);
+
+
+
+
+
+              }
 	    }
- 	  }} // MidMod Cuts
 	  } // Z containment
 	} // Y containment
 	
@@ -375,8 +445,21 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
       for(int j=1; j<TMath::Min(ntrkhits[i][0]-1,3000); ++j){
 	if((trkhity[i][0][j]<600)&&(trkhity[i][0][j]>0)){
 	  if((trkhitz[i][0][j]<695)&&(trkhitz[i][0][j]>0)){
-            if((trkhity[i][2][j]<highY)&&(trkhity[i][2][j]>lowY) && fiducialize){
-            if((trkhitz[i][2][j]<highZ)&&(trkhitz[i][2][j]>lowZ) && fiducialize){
+
+                yLoc=-1; zLoc=-1;
+                if (trkhity[i][0][j]>25 && trkhity[i][0][j]<175) yLoc=0;
+                if (trkhity[i][0][j]>225 && trkhity[i][0][j]<375) yLoc=1;
+                if (trkhity[i][0][j]>425 && trkhity[i][0][j]<575) yLoc=2;
+
+                if (trkhitz[i][0][j]>50 && trkhitz[i][0][j]<220) zLoc=0;
+                if (trkhitz[i][0][j]>240 && trkhitz[i][0][j]<450) zLoc=1;
+                if (trkhitz[i][0][j]>470 && trkhitz[i][0][j]<645) zLoc=2;
+
+
+
+
+
+
 	    if(trkhitx[i][0][j]<0 && trkhitx[i][0][j]>-360 && testneg){
 	      if(abs(180/TMath::Pi()*trackthetaxz[i])<40){
 		if(trkhitx[i][0][j]<0 && trkhitx[i][0][j+1]>0) continue;
@@ -392,7 +475,16 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
                 hdedx[0]->Fill(trkdedx[i][0][j]);
                 dqdx_hist[0][x_bin-1]->Fill(corrected_dqdx_0);
                 //if (x_bin == 1) cout<<event<<" neg "<<x_bin<<" "<<trkhitx[i][0][j]<<" "<<trkhity[i][0][j]<<" "<<trkhitz[i][0][j]<<endl;
-	      }
+               if (yLoc==0 && zLoc>-1) dqdx_hist_fiducialize[0][zLoc][x_bin-1]->Fill(corrected_dqdx_0);
+                else if (yLoc==1 && zLoc>-1) dqdx_hist_fiducialize[0][zLoc+3][x_bin-1]->Fill(corrected_dqdx_0);
+                else if (yLoc==2 && zLoc>-1) dqdx_hist_fiducialize[0][zLoc+6][x_bin-1]->Fill(corrected_dqdx_0);
+
+
+
+	     
+
+
+ }
 	    }
 	    if(trkhitx[i][0][j]>0 && trkhitx[i][0][j]<360 && testpos){
 	      if(abs(180/TMath::Pi()*trackthetaxz[i])>140){
@@ -408,10 +500,15 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
                 hdqdx[0]->Fill(trkdqdx[i][0][j]);
                 hdedx[0]->Fill(trkdedx[i][0][j]);
                 dqdx_hist[0][x_bin-1]->Fill(corrected_dqdx_0);
+                if (yLoc==0 && zLoc>-1) dqdx_hist_fiducialize[0][zLoc][x_bin-1]->Fill(corrected_dqdx_0);
+                else if (yLoc==1 && zLoc>-1) dqdx_hist_fiducialize[0][zLoc+3][x_bin-1]->Fill(corrected_dqdx_0);
+                else if (yLoc==2 && zLoc>-1) dqdx_hist_fiducialize[0][zLoc+6][x_bin-1]->Fill(corrected_dqdx_0);
+
+
+
                 //if (x_bin == 1) cout<<event<<" pos "<<x_bin<<" "<<trkhitx[i][0][j]<<" "<<trkhity[i][0][j]<<" "<<trkhitz[i][0][j]<<endl;
 	      }
 	    }
-          }} // MidMod Cuts
 	  } // Z containment
 	} // Y containment
       } // loop over hits of the track in the given plane
@@ -589,6 +686,10 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
  
   if(useMPV){
   std::vector<double> global_mpv;
+
+
+
+
   for (int i = 0; i < 3; ++i) {
     std::vector<double> chi2_vals;
       vector<double> chi_denominator;
@@ -597,7 +698,7 @@ void protoDUNE_X_calibAlt::Loop(TString mn)
       global_mpv.push_back(fitsnr_global->GetParameter(1));
 
       for (size_t j = 0; j < nBins; j++){       
-        if (dqdx_hist[i][j]->GetEntries()<300) continue;
+        if (dqdx_hist[i][j]->GetEntries()<100) continue;
     
     std::cout<<dqdx_hist[i][j]->GetEntries()<<std::endl;
     TF1 *fitsnr = runlangaufit(dqdx_hist[i][j], i, 200);  
@@ -625,10 +726,24 @@ dqdx_mpv_X_hist_2->SetBinError(j+1,fitsnr->GetParError(1));
 
         
 }
+      for (size_t k = 0; k < 9; k++){
+
+      for (size_t j = 0; j < nBins; j++){
+    if (dqdx_hist_fiducialize[i][k][j]->GetEntries()<100) continue;
+    TF1 *fitsnr2 = runlangaufit(dqdx_hist_fiducialize[i][k][j], i, 200);
+      if(i==0){ dqdx_mpv_X_hist_0_vec.at(k)->SetBinContent(j+1,fitsnr2->GetParameter(1));
+dqdx_mpv_X_hist_0_vec.at(k)->SetBinError(j+1,fitsnr2->GetParError(1));}   
+      
+      if(i==1){ dqdx_mpv_X_hist_1_vec.at(k)->SetBinContent(j+1,fitsnr2->GetParameter(1));
+dqdx_mpv_X_hist_1_vec.at(k)->SetBinError(j+1,fitsnr2->GetParError(1));}
+
+      if(i==2){ dqdx_mpv_X_hist_2_vec.at(k)->SetBinContent(j+1,fitsnr2->GetParameter(1));
+dqdx_mpv_X_hist_2_vec.at(k)->SetBinError(j+1,fitsnr2->GetParError(1));}
+
 }
 }
-
-
+}
+}
 
   //////////////////////////////////////////////////////////////////////////////////
   dqdx_mpv_X_hist_0->Write();
@@ -648,7 +763,11 @@ dqdx_mpv_X_hist_2->SetBinError(j+1,fitsnr->GetParError(1));
 
   for (int i = 0; i<3; ++i){
     hdqdx[i]->Write();
-    hdedx[i]->Write();
+    hdedx[i]->Write();}
+  for (int j =0; j<9; ++j){
+  dqdx_mpv_X_hist_0_vec.at(j)->Write();
+  dqdx_mpv_X_hist_1_vec.at(j)->Write();
+  dqdx_mpv_X_hist_2_vec.at(j)->Write();
   }
   t1.Write();
   file->Close();  
@@ -677,31 +796,6 @@ int main(int argc, char *argv[]) {
   string lifetimevar=argv[4];
   if(lifetimevar=="1") measureLifetime=true;
   }
-  if(argv[5]){
-  string locationArgv=argv[5];
-  if (locationArgv=="2"){ lowY=425; highY=575; location="high";}
-  else if (locationArgv=="0"){lowY=25; highY=175; location="low";}
-  else{lowY=225; highY=375; location="mid";}
-  
-
-  }
-  if(argv[6]){
-  string tpcArgv=argv[6];
-  if (tpcArgv=="2"){ lowZ=460; highZ=640; tpcUsed="third";}
-  else if (tpcArgv=="0"){lowZ=50; highZ=230; tpcUsed="first";}
-  else{lowZ=230; highZ=460; tpcUsed="second";}
-
-
-
-
-
-  }
-
-
-
-
-
-
 
   if (!(michelnumber == "0"||michelnumber == "1"||michelnumber == "2"||michelnumber == "3")){
     cout << "Error: Michel tree number must be 0,1, or 2" << endl;
